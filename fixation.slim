@@ -1,0 +1,352 @@
+	// simulate non-self recognition S-RNase based GSI
+	initialize() {
+		initializeSLiMModelType("nonWF");
+//		defineConstant("K", 100); // carrying capacity
+//		defineConstant("N", 500); // pop size -- 
+//		defineConstant("FB", 10); // number of F-boxes -- same as number of haplotypes until redundancy is encoded
+//		defineConstant("num_hap", 5); // number of functioning S-haplotypes to start the simulation.  Must be less than or equal to FB, until redundancy is encoded.
+//		defineConstant("cross_grains", 1); // number of outcrossed pollen grains a mom samples in one reproduction() callback
+//		defineConstant("self_grains", 1); // number of self pollen grains within each mom's pollen sample
+		initializeMutationType("m1", 0.5, "f", 0.0); // neutral
+		initializeMutationType("m2", 0.5, "f", 0.0); // gain of function S-RNase
+		initializeMutationType("m3", 0.5, "f", 0.0); // loss of function S-RNase
+		initializeMutationType("m4", 0.5, "f", 0.0); // gain of function F-Boxes
+		initializeMutationType("m5", 0.5, "f", 0.0); // loss of function F-Boxes
+		initializeMutationType("m6", 0.0, "f", -0.9); // deleterious
+		
+			
+		// g1 genomic element type: uses m1 for all mutations (non S-locus)
+		initializeGenomicElementType("g1", c(m1), c(1.0));
+		// g2 genomic element type: uses m1, m2, and m3 mutations (S-RNase)
+		initializeGenomicElementType("g2", c(m1,m2,m3), c(1.0, 0.1, 1.0));
+		// g3 genomic element type: uses m1, m4, and m5 mutations (F-Boxes)
+		initializeGenomicElementType("g3", c(m1,m4,m5), c(1.0, 0.1, 0.1));
+		
+		// Set up genome
+		// user defined total length of genome (0 based)
+		genome_length = 99999;
+		// user defined number of f-boxes -- this will also be the number of possible haplotypes (until we code redundancy)
+		num_fboxes = FB;
+		// user defined size of S-RNase locus.  Solanaceae S-RNase exons span ~680 bp -- not sure how this corresponds to SLiM genome space.
+		srnase_length = 500;
+		// user defined mean size of F-box loci.  F-boxes lack introns and span 1-1.2kb.   
+		fbox_length = 500;
+		// user defined size of mean intergenic space.  I have no good estimate of what this should be?
+		intergenic_length = 500;
+		// draw random starting point for S-RNase
+		srnase_start = asInteger(floor(runif(1, min = 0, max = genome_length - srnase_length)));
+		// find S-RNase end
+		srnase_end = asInteger(srnase_start + srnase_length);
+		// find how many F-boxes can fit on each side of the S-RNase.  This is to avoid downstream errors of trying to drop F-Boxes off the end of the genome.  Denominator is multiplied by 1.5 to give some extra room for sampling. 
+		num_f_after = floor((genome_length - srnase_end) / ((fbox_length + intergenic_length)*1.5));
+		if(num_f_after > num_fboxes) num_f_after = num_fboxes;
+		// do the same for before the S-RNase
+		num_f_before = floor((genome_length - srnase_start) / ((fbox_length + intergenic_length)*1.5));
+		if(num_f_before > num_fboxes) num_f_before = num_fboxes;
+		// calculate weights for drawing random F-boxes on either side of S-RNase locus
+		fbox_weights = c(num_f_before, num_f_after) / sum(c(num_f_before, num_f_after));
+		print(fbox_weights);
+		// sample binom to determine if F-Boxes will be before or after S-RNase.  0 == before, 1 == after
+		fbox_array = rbinom(num_fboxes, 1, fbox_weights[1]);
+		print(fbox_array);
+		
+		// initialize S-RNase locus
+		initializeGenomicElement(g2, srnase_start, srnase_end); // S-RNase
+		// keep track of the outer edges of the growing S-locus	
+		locus_start = c(srnase_start);
+		locus_end = c(srnase_end);
+		// keep track of start and ends of fbox loci
+		fbox_starts = c();
+		fbox_ends = c();
+		for(i in fbox_array){	
+			print(i);
+			// simulate intergenic space
+			space = floor(rnorm(1, mean = intergenic_length));
+			// drop it on the appropriate side of the S-RNase
+			if(i == 0){
+				// keep track of start and end of integenic space
+				start1=asInteger(locus_start - space);
+				end1=asInteger(locus_start-1);
+				// initialize intergenic space
+				initializeGenomicElement(g1, start1, end1);
+				// draw F-box length
+				new_fbox_len = asInteger(floor(rnorm(1, mean = fbox_length)));
+				// keep track of start and end of new F-box
+				start2=asInteger(locus_start - space - new_fbox_len);
+				end2=asInteger(locus_start - space - 1);
+				// initialize new f-box
+				initializeGenomicElement(g3, start2, end2);
+				// keep track of all start and ends for f-box loci
+				fbox_starts = c(fbox_starts, locus_start - space - new_fbox_len);
+				fbox_ends = c(fbox_ends, locus_start - space - 1);
+				// update leading edge of S-locus
+				locus_start = asInteger(locus_start - space - new_fbox_len);		
+			}
+			if(i == 1){
+				// keep track of start and end of integenic space
+				start1=asInteger(locus_end + 1);
+				end1 = asInteger(locus_end + space);
+				// initialize intergenic space
+				initializeGenomicElement(g1, start1, end1);
+				// draw F-box length
+				new_fbox_len = floor(rnorm(1, mean = fbox_length));
+				// keep track of start and end of new F-box
+				start2 = asInteger(locus_end + space + 1);
+				end2 = asInteger(start2 + new_fbox_len);
+				// initialize new f-box
+				initializeGenomicElement(g3, start2, end2);
+				// keep track of all start and ends for f-box loci
+				fbox_starts = c(fbox_starts, locus_end + space + 1);
+				fbox_ends = c(fbox_ends, locus_end + space + new_fbox_len);
+				// update trailing edge of S-locus
+				locus_end = locus_end + space + new_fbox_len + 1;			
+				}	
+		}
+
+		// initialize non S-genome
+		initializeGenomicElement(g1, 0, asInteger(locus_start -1));
+		initializeGenomicElement(g1, asInteger(locus_end + 1), genome_length);
+			
+	// set recombination breakpoints -- no recombination or mutation within S-locus (for now)
+		recomb_ends = c(asInteger(locus_start), asInteger(locus_end), genome_length);
+		//TODO: make breaks for each F-box and S-RNase included.  This will allow me to troubleshoot why introducing mutations eventually results in S-allele fixation. Can turn on only F-box muts or only S-RNase muts. 
+		//mut_ends=sort(c(fbox_ends, fbox_starts, srnase_start, srnase_end, genome_length));
+		ends=asInteger(c(locus_start, locus_end, genome_length));
+		mut_rates = c(1e-7, 1e-7, 1e-7);
+		recomb_rates = c(1e-8, 0, 1e-8);
+		initializeMutationRate(mut_rates, ends);
+		initializeRecombinationRate(recomb_rates, ends); 
+		// create F-box dictionary
+		fbox_dict1 = cbind(asInteger(seq(from = 0, to = num_fboxes-1)), asInteger(fbox_starts), asInteger(fbox_ends));
+		print(fbox_dict1);
+		defineConstant("fbox_dict", fbox_dict1);
+		defineConstant("srnase_range", asInteger(c(srnase_start, srnase_end)));
+		defineConstant("breaks", ends);
+	}
+
+
+
+	// create an initial subpopulation of N individuals
+	1 {
+		sim.addSubpop("p1", N);
+
+		// make indices for individuals who recieve each haplotype
+		// haplotypes will be dispersed in isoplethy
+		ind_ends=c(integerDiv(N, num_hap) * seq(from = 1, to = num_hap-1), N) - 1;
+		ind_starts=c(0, (ind_ends + 1)[seqLen(num_hap-1)]);
+		
+		// make haplotypes and give them out
+		for(i in seqLen(num_hap)){
+			// draw random location for S-RNase defining mutation within the S-RNase locus
+			srnase_loc = asInteger(runif(1, min = srnase_range[0], max = srnase_range[1]));
+			// keep track of f_box locations.  The focal (i) haplotype can not have an active F-box (key) that corresponds to its S-RNase (lock)
+			f_loc = c();
+			f_to_fill=which(i != seqLen(FB)[seqLen(num_hap)]);
+			for(j in f_to_fill){
+				tmp = asInteger(runif(1, min = fbox_dict[j,1], max = fbox_dict[j,2]));
+				f_loc = c(f_loc, tmp);
+			}
+			// grab a template genome -- these are initially empty but then are filled in below. 
+			// make sure to grab an empty one
+			templateS=p1.individuals[ind_starts[i]].genome1;
+			//templateS=p1.individuals[0].genome1;
+			// add mutations at drawn places (from above) 
+			// S-RNase
+			templateS.addNewDrawnMutation(m2, srnase_loc);
+			// F-Box
+			templateS.addNewDrawnMutation(m4, f_loc);
+			// tag all mutations in S-locus on this haplotype
+			templateS.mutationsOfType(m2).tag=asInteger(i);
+			templateS.mutationsOfType(m4).tag=asInteger(i);
+			// grab mutations as a vector
+			s_muts = c(templateS.mutationsOfType(m2), templateS.mutationsOfType(m4));
+			// remove mutations from template
+			templateS.removeMutations(s_muts);	
+			// give out haplotype to individuals
+			curInds = p1.individuals[ind_starts[i]:ind_ends[i]];
+			// get their genomes
+			curGenomes = curInds.genomes;
+			// give genomes S-haplotypes
+			curGenomes.addMutations(s_muts);	
+		}
+	}
+
+
+
+	// do reproduction
+	reproduction(){
+
+		// get S-RNase specificity of focal reproduction() plant
+		style_muts1=genome1.mutationsOfType(m2);
+		// do same for genome2	
+		style_muts2=genome2.mutationsOfType(m2);
+		style_spec1=style_muts1.tag;
+		style_spec2=style_muts2.tag;
+		style_lofs1=genome1.mutationsOfType(m3);
+		style_lofs2=genome2.mutationsOfType(m3);
+		// Figure out when the youngest style LOF occurred on each genome.
+		// If there are no LOFs, convert the origin generation from NULL to -1
+		if(size(style_lofs1.originGeneration) < 1) style_lof1_gen = -1;
+		else style_lof1_gen = max(style_lofs1.originGeneration);
+		if(size(style_lofs2.originGeneration) < 1) style_lof2_gen = -1;
+		else style_lof2_gen = max(style_lofs2.originGeneration);
+		//If there is a newer loss of function than gain of function, set the style specificity to the special value of -1
+		if(style_lof1_gen > max(style_muts1.originGeneration))
+			style_spec1 = -1;
+	//	else style_spec1=srnase_dict[which(srnase_dict[,0] == style_muts1.position),2];
+		if(style_lof2_gen > max(style_muts2.originGeneration))
+			style_spec2 = -1;
+		//else style_spec2=srnase_dict[which(srnase_dict[,0] == style_muts2.position),2];
+		style_specs=c(style_spec1, style_spec2);
+
+		// each individual reproduces itself once -- determine how many offspring focal individual will have
+		nOff=rpois(1, 5);
+
+		// sample plants from subppop to be pollen parents -- 
+		cross_pollen_parents=p1.sampleIndividuals(cross_grains, replace = T); // allowing replacement allows full sibs
+		pollen_parents = c(cross_pollen_parents, rep(individual, self_grains)); // add self pollen
+	//	pollen_parents = sample(pollen_parents, replace = F); // shuffle self and cross pollen just in case
+		// get pollen specificities for each parent in pollen subsample
+		for(dad in pollen_parents){
+			// get pollen mutations
+			pollen_muts1=dad.genome1.mutationsOfType(m4).position;
+			pollen_muts2=dad.genome2.mutationsOfType(m4).position;
+			// get pollen specifities
+			// assign pollen specificities
+			pmut1_spec = c();
+			for(pos in pollen_muts1){
+				pmut1_spec = c(pmut1_spec, fbox_dict[which(pos >= fbox_dict[,1] & pos <= fbox_dict[,2]),0]);				
+			}
+			pmut2_spec = c();
+			for(pos in pollen_muts2){
+				pmut2_spec = c(pmut2_spec, fbox_dict[which(pos >= fbox_dict[,1] & pos <= fbox_dict[,2]),0]);				
+			}
+
+
+			// check compatibility
+			// for compatibility the F-box pollen specs (for each genome), must match/contain BOTH s-rnase specs of the focal individual
+			if(style_specs[0] == -1) // If the first RNase is broken, both pollen haplotypes are automatically compatible
+			{
+				pollen1_comp1 = T;
+				pollen2_comp1 = T;
+			}
+			else
+			{
+				pollen1_comp1=any(style_specs[0] == pmut1_spec);
+				pollen2_comp1=any(style_specs[0] == pmut2_spec);
+
+			}
+			if(style_specs[1] == -1) // If the second RNase is broken, both pollen haplotypes are automatically compatible
+			{
+				pollen1_comp2 = T;
+				pollen2_comp2 = T;
+			}
+			else
+			{
+				pollen1_comp2=any(style_specs[1] == pmut1_spec);
+				pollen2_comp2=any(style_specs[1] == pmut2_spec);
+			}
+			pollen1_comp = pollen1_comp1 & pollen1_comp2;
+			pollen2_comp = pollen2_comp1 & pollen2_comp2;
+			// tag genomes of pollen parents 1 == compatible, 0 == incompatible
+			if(pollen1_comp == T) dad.genome1.tag=1;		
+			if(pollen1_comp == F) dad.genome1.tag=0;
+			if(pollen2_comp == T) dad.genome2.tag=1;		
+			if(pollen2_comp == F) dad.genome2.tag=0;
+			// tag pollen individuals with sum of their genome tags -- this will make it so we don't waste time with completely incompatible matings.  
+			dad.tag=sum(c(dad.genome1.tag, dad.genome2.tag)); 
+			}
+			
+			// don't waste time on incompatible pollen		
+			if(sum(pollen_parents.tag) != 0){
+				// make offspring.  
+				for(k in seqLen(nOff)){
+					//grab a dad			
+					dad = sample(pollen_parents, 1, weights = pollen_parents.tag);
+					//if dad is fully compatible, sample random genome from dad and make recombinant
+					if(dad.genome1.tag == 1 & dad.genome2.tag == 1){
+						rando_dad=rbinom(1, 1, 0.5);
+						if(rando_dad == 0) p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome1, NULL, NULL);
+						if(rando_dad == 1) p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome2, NULL, NULL);
+					}
+					// if only genome1 from dad is compatible, take random genome from mom and genome1 from dad to make recombinant
+					if(dad.genome1.tag == 1 & dad.genome2.tag == 0){p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome1, NULL, NULL);}
+					//if only genome2 from dad is compatible, take random genome from mom and genome2 from dad to make recombinant
+					if(dad.genome1.tag == 0 & dad.genome2.tag == 1){p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome2, NULL, NULL);}
+					// if dad is incompatible it shouldn't be here, but kill the kid just in case
+					if(dad.genome1.tag == 0 & dad.genome2.tag == 0){
+						dead_kid = p1.addEmpty();
+						dead_kid.fitnessScaling = 0;
+					}				
+				}
+			}
+			else{}	
+	}	
+
+	// tag new S-RNase mutations with 99999
+	mutation(m2) {
+		mut.tag = 99999;
+		return T;
+	}
+
+	early() {
+		// provide density-dependent selection so the non-WF model doesn't get out of control
+		p1.fitnessScaling = K / sum(p1.individuals.age > 0);
+
+		// check if a new mutation is here.  If so print out a message
+		if(any(sim.mutationsOfType(m2).tag == 99999)){
+			num_new = length(sim.mutationsOfType(m2)[which(sim.mutationsOfType(m2).tag == 99999)]);
+			print("gnoob(s)");
+			//get list of all S-RNase tags
+			specs=sim.mutationsOfType(m2).tag;
+			// only old ones
+			old_spec=specs[which(specs != 99999)];
+			// get list of possible specs -- some may have been lost due to drift
+			poss=seq(from = 0, to = max(old_spec));
+			// find which possible specs are missing > next new spec is min(missing), else next new spec is max(poss) + 1;
+			missing = c();
+			for(p in poss){
+				if(!any(p == old_spec)){
+					missing = c(missing, p);
+					} 
+			}
+			if(isNULL(missing)){ // if there are no missing specs, the next spec(s) is greater than the max
+				next_spec = max(poss) + (seqLen(num_new)+1);
+			}else if(length(missing) >= num_new){next_spec = sort(missing)[seqLen(num_new)];} // if there are enough missing specs for all new mutations this generation, give them out. 
+			else if(length(missing) < num_new){next_spec = c(sort(missing), max_poss + (seqLen(num_new - length(poss)+1)));} // If there are more new mutations than possible spots, give out all possible specs and add new incremental specs as needed. 
+			// tag mutations that are in simulation
+			sim.mutationsOfType(m2)[which(sim.mutationsOfType(m2).tag == 99999)].tag = next_spec;
+			cat("current S-RNase specifities are: \n");
+			print(sim.mutationsOfType(m2).tag);
+			}	
+	}
+
+
+
+	200 late(){
+		// make final S-RNase dictionary
+		smuts=sim.mutationsOfType(m2);
+		srnase_dict=cbind(smuts.position, smuts.id, smuts.tag, smuts.originGeneration);
+		cat("Final S-RNase dictionary: \n");
+		cat("Position, ID, tag, originGeneration \n");
+		print(srnase_dict);
+		catn(p1.individualCount);
+		cat("S-RNase muts: \n");
+		sim.outputMutations(sim.mutationsOfType(m2));
+		cat("S-RNase LoFs: \n");
+		sim.outputMutations(sim.mutationsOfType(m3));
+		cat("F-Box muts: \n");
+		sim.outputMutations(sim.mutationsOfType(m4));
+//		Output counts of fixed functional mutations
+		RNaseGoF = sim.mutationCounts(p1, sim.mutationsOfType(m2)) / (2*p1.individualCount);
+		RNaseLoF = sim.mutationCounts(p1, sim.mutationsOfType(m3)) / (2*p1.individualCount);
+		SLFGoF = sim.mutationCounts(p1, sim.mutationsOfType(m4)) / (2*p1.individualCount);
+		SLFLoF = sim.mutationCounts(p1, sim.mutationsOfType(m5)) / (2*p1.individualCount);
+		rgFix = size(which(RNaseGoF == 1));
+		rlFix = size(which(RNaseLoF == 1));
+		sgFix = size(which(SLFGoF == 1));
+		slFix = size(which(SLFLoF == 1));
+		out = paste(c(rgFix,rlFix,sgFix,slFix,K,N,FB,num_hap,cross_grains,self_grains), sep = ",");
+		writeFile("fixCount.csv", out, append = T);
+		}						
+		
