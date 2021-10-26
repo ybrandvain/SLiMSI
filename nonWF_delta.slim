@@ -7,6 +7,9 @@ initialize() {
 	initializeGenomicElement(g1, 0, 99999);
 	initializeMutationRate(1e-7);
 	initializeRecombinationRate(1e-8);
+	// Initialize a file for the fitness of the selfed and outcrossed offspring
+	h = paste(c('crossType','fitness'), sep = ',');
+	writeFile("self-out-fit.csv", h, append = F);
 }
 
 reproduction() {
@@ -82,6 +85,9 @@ late() {
       // But if we return their fitnesses in the fitness() callback, then selection will kill some of them off.
       // So we save their fitnesses as float tags, but return 1, so the fitness doesn't take effect.
       individual.tagF = w;
+      //		Output fitness of this selfed offspring
+		out = paste(c('self', w), sep = ",");
+		writeFile("self-out-fit.csv", out, append = T);
       return(1.0);
 	}
 	// Calculate fitness of the outcrossed individuals for inbreeding depression
@@ -114,6 +120,9 @@ late() {
       // But if we return their fitnesses in the fitness() callback, then selection will kill some of them off.
       // So we save their fitnesses as float tags, but return 1, so the fitness doesn't take effect.
       individual.tagF = w;
+//		Output fitness of this outcrossed offspring
+		out = paste(c('out', w), sep = ",");
+		writeFile("self-out-fit.csv", out, append = T);
       return(1.0);
 	}
 
