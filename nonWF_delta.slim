@@ -1,136 +1,146 @@
 initialize() {
-	initializeSLiMModelType("nonWF");
-	defineConstant("K", 500);
-	initializeMutationType("m1", 0.0, "f", -0.9);
-	m1.convertToSubstitution = T;
-	initializeGenomicElementType("g1", m1, 1.0);
-	initializeGenomicElement(g1, 0, 99999);
-	initializeMutationRate(1e-7);
-	initializeRecombinationRate(1e-8);
-	// Initialize a file for the fitness of the selfed and outcrossed offspring
-	h = paste(c('crossType','fitness'), sep = ',');
-	writeFile("self-out-fit.csv", h, append = F);
+        initializeSLiMModelType("nonWF");
+        defineConstant("K", 500);
+        initializeMutationType("m1", 0.0, "f", -0.9);
+        m1.convertToSubstitution = T;
+        initializeGenomicElementType("g1", m1, 1.0);
+        initializeGenomicElement(g1, 0, 99999);
+        initializeMutationRate(1e-7);
+        initializeRecombinationRate(1e-8);
+        // Initialize files for the fitness of the selfed and outcrossed offspring
+        h = paste(c('fitness'), sep = ',');
+        writeFile("self-fit.csv", h, append = F);
+        writeFile("out-fit.csv", h, append = F);
 }
 
 reproduction() {
-	subpop.addCrossed(individual, subpop.sampleIndividuals(1));
+        subpop.addCrossed(individual, subpop.sampleIndividuals(1));
 }
 
 1 early() {
-	sim.addSubpop("p1", 500);
+        sim.addSubpop("p1", 500);
 }
 
 early() {
-	p1.fitnessScaling = K / p1.individualCount;
+        p1.fitnessScaling = K / p1.individualCount;
 }
 
 late() {
-	inds = p1.individuals;
-	catn(sim.generation + ": " + size(inds) + " (" + max(inds.age) + ")");
+        inds = p1.individuals;
+        //catn(sim.generation + ": " + size(inds) + " (" + max(inds.age) + ")");
 }
 
 199 late() {
-		// Create a subpopulation just for selfed offspring
-		sim.addSubpop('p100', 0);
-		// Create a subpopulation just for outcrossed offspring
-		sim.addSubpop('p200', 0);
-	}
-	
-	// Make selfed offspring for calculating inbreeding depression
-	200 reproduction(p1) {
-		// Select 1000 random individuals in p1 to self one time each
-		self_parents = sample(p1.individuals, 1000, replace = T);
-		for(i in self_parents){
-			p100.addSelfed(i);
-		}
-		self.active = 0; // Turn off the callback after running once
-	}
-	// Make outcrossed offspring for calculating inbreeding depression
-	200 reproduction(p1) {
-		// Select 1000 random pairs to produce one outcrossed offspring each
-		moms = sample(p1.individuals, 1000, replace = T);
-		dads = sample(p1.individuals, 1000, replace = T);
-		for(i in 0:999){
-			p200.addCrossed(moms[i], dads[i]);
-		}
-		self.active = 0; // Turn off the callback after running once
-	}
-	// Calculate fitness of the selfed individuals for inbreeding depression
-	200 fitness(NULL, p100) { // On an individual-by-individual basis
+                // Create a subpopulation just for selfed offspring
+                sim.addSubpop('p100', 0);
+                // Create a subpopulation just for outcrossed offspring
+                sim.addSubpop('p200', 0);
+        }
+
+        // Make selfed offspring for calculating inbreeding depression
+        200 reproduction(p1) {
+                // Select 1000 random individuals in p1 to self one time each
+                self_parents = sample(p1.individuals, 1000, replace = T);
+                for(i in self_parents){
+                        p100.addSelfed(i);
+                }
+                self.active = 0; // Turn off the callback after running once
+        }
+        // Make outcrossed offspring for calculating inbreeding depression
+        200 reproduction(p1) {
+                // Select 1000 random pairs to produce one outcrossed offspring each
+                moms = sample(p1.individuals, 1000, replace = T);
+                dads = sample(p1.individuals, 1000, replace = T);
+                for(i in 0:999){
+                        p200.addCrossed(moms[i], dads[i]);
+                }
+                self.active = 0; // Turn off the callback after running once
+        }
+        // Calculate fitness of the selfed individuals for inbreeding depression
+        200 fitness(NULL, p100) { // On an individual-by-individual basis
       del_muts = individual.genomes.mutationsOfType(m1);
       effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
-      print(individual.countOfMutationsOfType(m1));
+  //    print(individual.countOfMutationsOfType(m1));
       for(m in del_muts){
-      	// Determine if the individual is heterozygous or homozygous for this mutation
-      	isHomozygous = individual.genome1.containsMutations(m) & individual.genome2.containsMutations(m);
-      	// Define s; thanks to Chris on the SLiM Google Group for making this robust to gamma DFEs
-      	s = max(m.selectionCoeff,-1.0);
-      	// Heterozygous mutations
-			if(!isHomozygous){
-				effs = c(effs, s*m.mutationType.dominanceCoeff);
-			}
-	      // Homomzygous mutations
-	      if(isHomozygous){
-	      	effs = c(effs, s);
-			}
+        // Determine if the individual is heterozygous or homozygous for this mutation
+        isHomozygous = individual.genome1.containsMutations(m) & individual.genome2.containsMutations(m);
+        // Define s; thanks to Chris on the SLiM Google Group for making this robust to gamma DFEs
+        s = max(m.selectionCoeff,-1.0);
+        // Heterozygous mutations
+                        if(!isHomozygous){
+                                effs = c(effs, s*m.mutationType.dominanceCoeff);
+                        }
+              // Homomzygous mutations
+              if(isHomozygous){
+                effs = c(effs, s);
+                        }
       }
       // Calculate the individual's overall fitness and save it to self_fit
       if(size(del_muts) < 1){
-      	w = asFloat(1);
+        w = asFloat(1);
       }
       else{
-      	w = asFloat(product(1 + effs));
+        w = asFloat(product(1 + effs));
       }
       // Their fitness has been calculated, but we need to access these fitnesses all at once to average them.
       // But if we return their fitnesses in the fitness() callback, then selection will kill some of them off.
       // So we save their fitnesses as float tags, but return 1, so the fitness doesn't take effect.
       individual.tagF = w;
-      //		Output fitness of this selfed offspring
-		out = paste(c('self', w), sep = ",");
-		writeFile("self-out-fit.csv", out, append = T);
+      //                Output fitness of this selfed offspring
+                out = paste(c(w), sep = ",");
+                writeFile("self-fit.csv", out, append = T);
       return(1.0);
-	}
-	// Calculate fitness of the outcrossed individuals for inbreeding depression
-	200 fitness(NULL, p200) { // On an individual-by-individual basis
+        }
+        // Calculate fitness of the outcrossed individuals for inbreeding depression
+        200 fitness(NULL, p200) { // On an individual-by-individual basis
       del_muts = individual.genomes.mutationsOfType(m1);
       effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
-      print(individual.countOfMutationsOfType(m1));
+//      print(individual.countOfMutationsOfType(m1));
       for(m in del_muts){
-      	// Determine if the individual is heterozygous or homozygous for this mutation
-      	isHomozygous = individual.genome1.containsMutations(m) & individual.genome2.containsMutations(m);
-      	// Define s; thanks to Chris on the SLiM Google Group for making this robust to gamma DFEs
-      	s = max(m.selectionCoeff,-1.0);
-      	// Heterozygous mutations
-			if(!isHomozygous){
-				effs = c(effs, s*m.mutationType.dominanceCoeff);
-			}
-	      // Homomzygous mutations
-	      if(isHomozygous){
-	      	effs = c(effs, s);
-			}
+        // Determine if the individual is heterozygous or homozygous for this mutation
+        isHomozygous = individual.genome1.containsMutations(m) & individual.genome2.containsMutations(m);
+        // Define s; thanks to Chris on the SLiM Google Group for making this robust to gamma DFEs
+        s = max(m.selectionCoeff,-1.0);
+        // Heterozygous mutations
+                        if(!isHomozygous){
+                                effs = c(effs, s*m.mutationType.dominanceCoeff);
+                        }
+              // Homomzygous mutations
+              if(isHomozygous){
+                effs = c(effs, s);
+                        }
       }
       // Calculate the individual's overall fitness and save it to self_fit
       if(size(del_muts) < 1){
-      	w = asFloat(1);
+        w = asFloat(1);
       }
       else{
-      	w = asFloat(product(1 + effs));
+        w = asFloat(product(1 + effs));
       }
       // Their fitness has been calculated, but we need to access these fitnesses all at once to average them.
       // But if we return their fitnesses in the fitness() callback, then selection will kill some of them off.
       // So we save their fitnesses as float tags, but return 1, so the fitness doesn't take effect.
       individual.tagF = w;
-//		Output fitness of this outcrossed offspring
-		out = paste(c('out', w), sep = ",");
-		writeFile("self-out-fit.csv", out, append = T);
+//              Output fitness of this outcrossed offspring
+                out = paste(c(w), sep = ",");
+                writeFile("out-fit.csv", out, append = T);
       return(1.0);
-	}
+        }
 
 200 late() {
-	sim.outputFull(ages=T);
-	// Calculate inbreeding depression
-	w_self = mean(p100.individuals.tagF);
-	w_out = mean(p200.individuals.tagF);
-	delta = 1 - w_self/w_out;
-	print(paste(c('delta =', delta)));
-}
+        sim.outputFull(ages=T);
+        // Calculate inbreeding depression
+        w_self = mean(p100.individuals.tagF);
+        w_out = mean(p200.individuals.tagF);
+        //delta = 1 - w_self/w_out;
+        //print(paste(c('delta =', delta)));
+// Read the fitness you output earlier
+        self_fit = readFile("self-fit.csv");
+        self_fit = self_fit[1:(length(self_fit)-1)];
+        self_fit = asFloat(self_fit);
+        out_fit = readFile("out-fit.csv");
+        out_fit = out_fit[1:(length(out_fit)-1)];
+        out_fit = asFloat(out_fit);
+        delta = 1 - mean(self_fit)/mean(out_fit);
+        message = paste(c("Delta =", delta), sep = ' ');
+        print(message);
