@@ -119,6 +119,10 @@
 		defineConstant("fbox_dict", fbox_dict1);
 		defineConstant("srnase_range", asInteger(c(srnase_start, srnase_end)));
 		defineConstant("breaks", recomb_ends);
+		// Initialize files for the fitness of the selfed and outcrossed offspring
+      h = paste(c('fitness'), sep = ',');
+      writeFile("self-fit.csv", h, append = F);
+      writeFile("out-fit.csv", h, append = F);
 	}
 
 
@@ -308,7 +312,104 @@
 			}	
 	}
 
+///////////////////////
+/// CALCULATE DELTA ///
+///////////////////////
 
+9999 late() {
+                // Create a subpopulation just for selfed offspring
+                sim.addSubpop('p100', 0);
+                // Create a subpopulation just for outcrossed offspring
+                sim.addSubpop('p200', 0);
+        }
+
+        // Make selfed offspring for calculating inbreeding depression
+        10000 reproduction(p1) {
+                // Select 1000 random individuals in p1 to self one time each
+                self_parents = sample(p1.individuals, 1000, replace = T);
+                for(i in self_parents){
+                        p100.addSelfed(i);
+                }
+                self.active = 0; // Turn off the callback after running once
+        }
+        // Make outcrossed offspring for calculating inbreeding depression
+        10000 reproduction(p1) {
+                // Select 1000 random pairs to produce one outcrossed offspring each
+                moms = sample(p1.individuals, 1000, replace = T);
+                dads = sample(p1.individuals, 1000, replace = T);
+                for(i in 0:999){
+                        p200.addCrossed(moms[i], dads[i]);
+                }
+                self.active = 0; // Turn off the callback after running once
+        }
+        // Calculate fitness of the selfed individuals for inbreeding depression
+        10000 fitness(NULL, p100) { // On an individual-by-individual basis
+      del_muts = individual.genomes.mutationsOfType(m6);
+      effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
+  //    print(individual.countOfMutationsOfType(m6));
+      for(m in del_muts){
+        // Determine if the individual is heterozygous or homozygous for this mutation
+        isHomozygous = individual.genome1.containsMutations(m) & individual.genome2.containsMutations(m);
+        // Define s; thanks to Chris on the SLiM Google Group for making this robust to gamma DFEs
+        s = max(m.selectionCoeff,-1.0);
+        // Heterozygous mutations
+                        if(!isHomozygous){
+                                effs = c(effs, s*m.mutationType.dominanceCoeff);
+                        }
+              // Homomzygous mutations
+              if(isHomozygous){
+                effs = c(effs, s);
+                        }
+      }
+      // Calculate the individual's overall fitness and save it to self-fit
+      if(size(del_muts) < 1){
+        w = asFloat(1);
+      }
+      else{
+        w = asFloat(product(1 + effs));
+      }
+      individual.tagF = w;
+      //                Output fitness of this selfed offspring
+                out = paste(c(w), sep = ",");
+                writeFile("self-fit.csv", out, append = T);
+      return(1.0);
+        }
+        // Calculate fitness of the outcrossed individuals for inbreeding depression
+        10000 fitness(NULL, p200) { // On an individual-by-individual basis
+      del_muts = individual.genomes.mutationsOfType(m6);
+      effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
+//      print(individual.countOfMutationsOfType(m6));
+      for(m in del_muts){
+        // Determine if the individual is heterozygous or homozygous for this mutation
+        isHomozygous = individual.genome1.containsMutations(m) & individual.genome2.containsMutations(m);
+        // Define s; thanks to Chris on the SLiM Google Group for making this robust to gamma DFEs
+        s = max(m.selectionCoeff,-1.0);
+        // Heterozygous mutations
+                        if(!isHomozygous){
+                                effs = c(effs, s*m.mutationType.dominanceCoeff);
+                        }
+              // Homomzygous mutations
+              if(isHomozygous){
+                effs = c(effs, s);
+                        }
+      }
+      // Calculate the individual's overall fitness and save it to out-fit
+      if(size(del_muts) < 1){
+        w = asFloat(1);
+      }
+      else{
+        w = asFloat(product(1 + effs));
+      }
+      individual.tagF = w;
+//              Output fitness of this outcrossed offspring
+                out = paste(c(w), sep = ",");
+                writeFile("out-fit.csv", out, append = T);
+      return(1.0);
+        }
+
+////////////////////////////////
+/// FINISH CALCULATING DELTA ///
+////////////////////////////////
 
 	10000 late(){
 		// make final S-RNase dictionary
@@ -335,5 +436,17 @@
 			out = c(f.position, f.id, f.tag, f.originGeneration);
 			writeFile(mut_name, paste(out, sep = ','), append = T);
 		}
+		// Calculate and output delta
+		self_fit = readFile("self-fit.csv");
+      self_fit = self_fit[1:(length(self_fit)-1)];
+      self_fit = asFloat(self_fit);
+      out_fit = readFile("out-fit.csv");
+      out_fit = out_fit[1:(length(out_fit)-1)];
+      out_fit = asFloat(out_fit);
+      delta = 1 - mean(self_fit)/mean(out_fit);
+      delta_message = paste(c("Delta =", delta), sep = ' ');
+      print(delta_message);
+      delta_name = 'delta_' + out_name;
+      writeFile(delta_name, delta_message, append = F);
 		}						
 		
