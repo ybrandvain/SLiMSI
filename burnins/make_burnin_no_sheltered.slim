@@ -21,7 +21,7 @@
 		defineConstant("mult", 10.0);		
 			
 		// g1 genomic element type: uses m1 for all mutations (non S-locus)
-		initializeGenomicElementType("g1", c(m6), c(mult));
+		initializeGenomicElementType("g1", c(m6), c(1));
 		// g2 genomic element type: uses m1, m2, and m3 mutations (S-RNase)
 		initializeGenomicElementType("g2", c(m1,m2,m3), c(0.0000000001, 0.0, 0.0));
 		// g3 genomic element type: uses m1, m4, and m5 mutations (F-Boxes)
@@ -105,7 +105,7 @@
 	// set recombination breakpoints -- no recombination or mutation within S-locus (for now)
 		recomb_ends = c(asInteger(locus_start), asInteger(locus_end), chrom_ends);
 		recomb_rates = c(1e-9, 0, chrom_rates);
-		mut_rates = rep(mu, length(recomb_rates));
+		mut_rates = rep(mu*mult, length(recomb_rates));
 
 		//mut_ends=sort(c(fbox_ends, fbox_starts, srnase_start, srnase_end, genome_length));
 //		ends=asInteger(c(locus_start, locus_end, genome_length));
