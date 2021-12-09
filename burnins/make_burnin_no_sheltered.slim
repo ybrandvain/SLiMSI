@@ -18,7 +18,7 @@
 		defineConstant("mu", 1e-7);
 		
 		// Define the scaling factor for deleterious mutations
-		defineConstant("mult", 10.0);		
+		defineConstant("mult", 1.0);		
 			
 		// g1 genomic element type: uses m1 for all mutations (non S-locus)
 		initializeGenomicElementType("g1", c(m6), c(1));
@@ -105,7 +105,7 @@
 	// set recombination breakpoints -- no recombination or mutation within S-locus (for now)
 		recomb_ends = c(asInteger(locus_start), asInteger(locus_end), chrom_ends);
 		recomb_rates = c(1e-9, 0, chrom_rates);
-		mut_rates = rep(mu*mult, length(recomb_rates));
+		mut_rates = c(mu*mult, 0, rep(mu*mult, length(chrom_rates)));
 
 		//mut_ends=sort(c(fbox_ends, fbox_starts, srnase_start, srnase_end, genome_length));
 //		ends=asInteger(c(locus_start, locus_end, genome_length));
@@ -316,7 +316,7 @@
 /// CALCULATE DELTA ///
 ///////////////////////
 
-9999 late() {
+999 late() {
                 // Create a subpopulation just for selfed offspring
                 sim.addSubpop('p100', 0);
                 // Create a subpopulation just for outcrossed offspring
@@ -324,7 +324,7 @@
         }
 
         // Make selfed offspring for calculating inbreeding depression
-        10000 reproduction(p1) {
+        1000 reproduction(p1) {
                 // Select 1000 random individuals in p1 to self one time each
                 self_parents = sample(p1.individuals, 1000, replace = T);
                 for(i in self_parents){
@@ -333,7 +333,7 @@
                 self.active = 0; // Turn off the callback after running once
         }
         // Make outcrossed offspring for calculating inbreeding depression
-        10000 reproduction(p1) {
+        1000 reproduction(p1) {
                 // Select 1000 random pairs to produce one outcrossed offspring each
                 moms = sample(p1.individuals, 1000, replace = T);
                 dads = sample(p1.individuals, 1000, replace = T);
@@ -343,7 +343,7 @@
                 self.active = 0; // Turn off the callback after running once
         }
         // Calculate fitness of the selfed individuals for inbreeding depression
-        10000 fitness(NULL, p100) { // On an individual-by-individual basis
+        1000 fitness(NULL, p100) { // On an individual-by-individual basis
       del_muts = individual.genomes.mutationsOfType(m6);
       effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
   //    print(individual.countOfMutationsOfType(m6));
@@ -370,12 +370,15 @@
       }
       individual.tagF = w;
       //                Output fitness of this selfed offspring
+					 if(w < 10^(-300)){
+					 	w = 0.0;
+					 }      
                 out = paste(c(w), sep = ",");
                 writeFile("self-fit.csv", out, append = T);
       return(1.0);
         }
         // Calculate fitness of the outcrossed individuals for inbreeding depression
-        10000 fitness(NULL, p200) { // On an individual-by-individual basis
+        1000 fitness(NULL, p200) { // On an individual-by-individual basis
       del_muts = individual.genomes.mutationsOfType(m6);
       effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
 //      print(individual.countOfMutationsOfType(m6));
@@ -402,6 +405,9 @@
       }
       individual.tagF = w;
 //              Output fitness of this outcrossed offspring
+					 if(w < 10^(-300)){
+					 	w = 0.0;
+					 }
                 out = paste(c(w), sep = ",");
                 writeFile("out-fit.csv", out, append = T);
       return(1.0);
@@ -411,7 +417,7 @@
 /// FINISH CALCULATING DELTA ///
 ////////////////////////////////
 
-	10000 late(){
+	1000 late(){
 		// make final S-RNase dictionary
 		smuts=sim.mutationsOfType(m2);
 		srnase_dict=cbind(smuts.position, smuts.id, smuts.tag, smuts.originGeneration);
