@@ -23,9 +23,9 @@
 		// g1 genomic element type: uses m1 for all mutations (non S-locus)
 		initializeGenomicElementType("g1", c(m6), c(mult));
 		// g2 genomic element type: uses m1, m2, and m3 mutations (S-RNase)
-		initializeGenomicElementType("g2", c(m1,m2,m3), c(0.0000000001, 0.0, 0.0));
+		initializeGenomicElementType("g2", c(m1,m2,m3), c(0.0000000001, 1.0, 1.0));
 		// g3 genomic element type: uses m1, m4, and m5 mutations (F-Boxes)
-		initializeGenomicElementType("g3", c(m1,m4,m5), c(0.0000000001, 0.0, 0.0));
+		initializeGenomicElementType("g3", c(m1,m4,m5), c(0.0000000001, 1.0, 1.0));
 		// g4 genomic element type: uses m1 mutations (intergenic regions in S-locus)
 		initializeGenomicElementType("g4", c(m1), c(0.0000000001));		
 
@@ -119,19 +119,28 @@
 		defineConstant("fbox_dict", fbox_dict1);
 		defineConstant("srnase_range", asInteger(c(srnase_start, srnase_end)));
 		defineConstant("breaks", recomb_ends);
+		// Initialize files for the fitness of the selfed and outcrossed offspring
+      h = paste(c('fitness'), sep = ',');
+      writeFile("self-fit.csv", h, append = F);
+      writeFile("out-fit.csv", h, append = F);
+
 	}
 
 
 	// load in burnin pop
 	1 early(){
-		sim.readFromPopulationFile("no_sheltered_burnin_100K_500N_10FB_5num_hap_9cross_grains_1self_grains_1e-07mu_10mult.txt");
+		sim.readFromPopulationFile("no_sheltered_burnin_100K_500N_10FB_5num_hap_9cross_grains_1self_grains_1e-07mu_10000mult.txt");
 		// load in the mutation file
-		mut_file = readFile("mut_no_sheltered_burnin_100K_500N_10FB_5num_hap_9cross_grains_1self_grains_1e-07mu_10mult.txt");
+		mut_file = readFile("mut_no_sheltered_burnin_100K_500N_10FB_5num_hap_9cross_grains_1self_grains_1e-07mu_10000mult.txt");
 		// loop through each line and assign tags for each mutation
 		for(i in 1:(length(mut_file)-1)){
 			line = strsplit(mut_file[i], sep = ",");
 			matching_mut = sim.mutations[sim.mutations.id == line[1]];
 			matching_mut.tag = asInteger(line[2]);
+		}
+		// If there's more than one subpopulation, get rid of the others
+		if(length(sim.subpopulations) > 1){
+			sim.subpopulations[1:(length(sim.subpopulations)-1)].removeSubpopulation();
 		}
 	}
 
@@ -275,7 +284,131 @@
 			}	
 	}
 
+///////////////////////
+/// CALCULATE DELTA ///
+///////////////////////
 
+10099 late() {
+                // Create a subpopulation just for selfed offspring
+                sim.addSubpop('p100', 0);
+                // Create a subpopulation just for outcrossed offspring
+                sim.addSubpop('p200', 0);
+        }
+
+        // Make selfed offspring for calculating inbreeding depression
+        10100 reproduction(p1) {
+                // Select 1000 random individuals in p1 to self one time each
+                self_parents = sample(p1.individuals, 1000, replace = T);
+                for(i in self_parents){
+                        p100.addSelfed(i);
+                }
+                self.active = 0; // Turn off the callback after running once
+        }
+        // Make outcrossed offspring for calculating inbreeding depression
+        10100 reproduction(p1) {
+                // Select 1000 random pairs to produce one outcrossed offspring each
+                moms = sample(p1.individuals, 1000, replace = T);
+                dads = sample(p1.individuals, 1000, replace = T);
+                for(i in 0:999){
+                        p200.addCrossed(moms[i], dads[i]);
+                }
+                self.active = 0; // Turn off the callback after running once
+        }
+        // Calculate fitness of the selfed individuals for inbreeding depression
+        10100 fitness(NULL, p100) { // On an individual-by-individual basis
+      del_muts = individual.genomes.mutationsOfType(m6);
+      effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
+  //    print(individual.countOfMutationsOfType(m6));
+      for(m in del_muts){
+        // Determine if the individual is heterozygous or homozygous for this mutation
+        isHomozygous = individual.genome1.containsMutations(m) & individual.genome2.containsMutations(m);
+        // Define s; thanks to Chris on the SLiM Google Group for making this robust to gamma DFEs
+        s = max(m.selectionCoeff,-1.0);
+        // Heterozygous mutations
+                        if(!isHomozygous){
+                                effs = c(effs, s*m.mutationType.dominanceCoeff);
+                        }
+              // Homomzygous mutations
+              if(isHomozygous){
+                effs = c(effs, s);
+                        }
+      }
+      // Calculate the individual's overall fitness and save it to self-fit
+      if(size(del_muts) < 1){
+        w = asFloat(1);
+      }
+      else{
+        w = asFloat(product(1 + effs));
+      }
+      individual.tagF = w;
+      //                Output fitness of this selfed offspring
+					 if(w < 10^(-300)){
+					 	w = 0.0;
+					 }      
+                out = paste(c(w), sep = ",");
+                writeFile("self-fit.csv", out, append = T);
+      return(1.0);
+        }
+        // Calculate fitness of the outcrossed individuals for inbreeding depression
+        10100 fitness(NULL, p200) { // On an individual-by-individual basis
+      del_muts = individual.genomes.mutationsOfType(m6);
+      effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
+//      print(individual.countOfMutationsOfType(m6));
+      for(m in del_muts){
+        // Determine if the individual is heterozygous or homozygous for this mutation
+        isHomozygous = individual.genome1.containsMutations(m) & individual.genome2.containsMutations(m);
+        // Define s; thanks to Chris on the SLiM Google Group for making this robust to gamma DFEs
+        s = max(m.selectionCoeff,-1.0);
+        // Heterozygous mutations
+                        if(!isHomozygous){
+                                effs = c(effs, s*m.mutationType.dominanceCoeff);
+                        }
+              // Homomzygous mutations
+              if(isHomozygous){
+                effs = c(effs, s);
+                        }
+      }
+      // Calculate the individual's overall fitness and save it to out-fit
+      if(size(del_muts) < 1){
+        w = asFloat(1);
+      }
+      else{
+        w = asFloat(product(1 + effs));
+      }
+      individual.tagF = w;
+//              Output fitness of this outcrossed offspring
+					 if(w < 10^(-300)){
+					 	w = 0.0;
+					 }
+                out = paste(c(w), sep = ",");
+                writeFile("out-fit.csv", out, append = T);
+      return(1.0);
+        }
+
+////////////////////////////////
+/// FINISH CALCULATING DELTA ///
+////////////////////////////////
+
+	10100 late(){
+		// Calculate and print delta
+		self_fit = readFile("self-fit.csv");
+      self_fit = self_fit[1:(length(self_fit)-1)];
+      self_fit = asFloat(self_fit);
+      out_fit = readFile("out-fit.csv");
+      out_fit = out_fit[1:(length(out_fit)-1)];
+      out_fit = asFloat(out_fit);
+      delta = 1 - mean(self_fit)/mean(out_fit);
+      delta_message = paste(c("Delta =", delta), sep = ' ');
+      print(delta_message);
+      // Overwrite the self- and out-fit.csv files
+      h = paste(c('fitness'), sep = ',');
+      writeFile("self-fit.csv", h, append = F);
+      writeFile("out-fit.csv", h, append = F);
+      // Remove excess subpopulations
+      if(length(sim.subpopulations) > 1){
+			sim.subpopulations[1:(length(sim.subpopulations)-1)].removeSubpopulation();
+		}
+		}			
 
 	20000 late(){
 		// make final S-RNase dictionary
