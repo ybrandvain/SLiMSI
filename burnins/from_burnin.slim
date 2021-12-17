@@ -13,12 +13,14 @@
 		initializeMutationType("m4", 0.5, "f", 0.0); // gain of function F-Boxes
 		initializeMutationType("m5", 0.5, "f", 0.0); // loss of function F-Boxes
 		initializeMutationType("m6", 0.0, "f", -0.9); // deleterious
-
 		// Define the mutation rate here so it can be easily manipulated
 		defineConstant("mu", 1e-7);
 		
 		// Define the scaling factor for deleterious mutations
 		defineConstant("mult", 10.0);		
+
+		// Define the generations in which delta should be calculated
+		defineConstant('deltaSchedule', c(10100, 10200, 10300, 10400, 10500));
 			
 		// g1 genomic element type: uses m1 for all mutations (non S-locus)
 		initializeGenomicElementType("g1", c(m6), c(mult));
@@ -288,24 +290,29 @@
 /// CALCULATE DELTA ///
 ///////////////////////
 
-10099 late() {
+10000:19999 late() {
+		  if(any(sim.generation == (deltaSchedule-1))){
                 // Create a subpopulation just for selfed offspring
                 sim.addSubpop('p100', 0);
                 // Create a subpopulation just for outcrossed offspring
                 sim.addSubpop('p200', 0);
+                }
         }
 
         // Make selfed offspring for calculating inbreeding depression
-        10100 reproduction(p1) {
+        10000:19999 reproduction(p1) {
+        	if(any(sim.generation == (deltaSchedule))){
                 // Select 1000 random individuals in p1 to self one time each
                 self_parents = sample(p1.individuals, 1000, replace = T);
                 for(i in self_parents){
                         p100.addSelfed(i);
                 }
                 self.active = 0; // Turn off the callback after running once
+          }
         }
         // Make outcrossed offspring for calculating inbreeding depression
-        10100 reproduction(p1) {
+        10000:19999 reproduction(p1) {
+        	if(any(sim.generation == (deltaSchedule))){
                 // Select 1000 random pairs to produce one outcrossed offspring each
                 moms = sample(p1.individuals, 1000, replace = T);
                 dads = sample(p1.individuals, 1000, replace = T);
@@ -313,9 +320,11 @@
                         p200.addCrossed(moms[i], dads[i]);
                 }
                 self.active = 0; // Turn off the callback after running once
+          }
         }
         // Calculate fitness of the selfed individuals for inbreeding depression
-        10100 fitness(NULL, p100) { // On an individual-by-individual basis
+        10000:19999 fitness(NULL, p100) { // On an individual-by-individual basis
+        if(any(sim.generation == (deltaSchedule))){
       del_muts = individual.genomes.mutationsOfType(m6);
       effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
   //    print(individual.countOfMutationsOfType(m6));
@@ -348,9 +357,11 @@
                 out = paste(c(w), sep = ",");
                 writeFile("self-fit.csv", out, append = T);
       return(1.0);
+      }
         }
         // Calculate fitness of the outcrossed individuals for inbreeding depression
-        10100 fitness(NULL, p200) { // On an individual-by-individual basis
+        10000:19999 fitness(NULL, p200) { // On an individual-by-individual basis
+        if(any(sim.generation == (deltaSchedule))){
       del_muts = individual.genomes.mutationsOfType(m6);
       effs = c(); // Fitness effects of each mutation (hetero- or homozygous)
 //      print(individual.countOfMutationsOfType(m6));
@@ -383,13 +394,15 @@
                 out = paste(c(w), sep = ",");
                 writeFile("out-fit.csv", out, append = T);
       return(1.0);
+      }
         }
 
 ////////////////////////////////
 /// FINISH CALCULATING DELTA ///
 ////////////////////////////////
 
-	10100 late(){
+	10000:19999 late(){
+	if(any(sim.generation == (deltaSchedule))){
 		// Calculate and print delta
 		self_fit = readFile("self-fit.csv");
       self_fit = self_fit[1:(length(self_fit)-1)];
@@ -408,6 +421,7 @@
       if(length(sim.subpopulations) > 1){
 			sim.subpopulations[1:(length(sim.subpopulations)-1)].removeSubpopulation();
 		}
+	}
 		}			
 
 	20000 late(){
