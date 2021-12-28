@@ -21,7 +21,10 @@
 
 		// Define the generations in which delta should be calculated
 		defineConstant('deltaSchedule', c(10100, 10200, 10300, 10400, 10500));
-			
+		
+		// Define a constant, unpurgeable fitness penalty for all selfed offspring
+		defineConstant('constantDelta', 0.0);		
+		
 		// g1 genomic element type: uses m1 for all mutations (non S-locus)
 		initializeGenomicElementType("g1", c(m6), c(mult));
 		// g2 genomic element type: uses m1, m2, and m3 mutations (S-RNase)
@@ -247,13 +250,23 @@
 					//if dad is fully compatible, sample random genome from dad and make recombinant
 					if(dad.genome1.tag == 1 & dad.genome2.tag == 1){
 						rando_dad=rbinom(1, 1, 0.5);
-						if(rando_dad == 0) p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome1, NULL, NULL);
-						if(rando_dad == 1) p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome2, NULL, NULL);
+						if(rando_dad == 0) child = p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome1, NULL, NULL);
+						if(rando_dad == 1) child = p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome2, NULL, NULL);
+						// apply fitness penalty to selfed offspring
+						if(dad == individual) child.fitnessScaling = 1 - constantDelta;
 					}
 					// if only genome1 from dad is compatible, take random genome from mom and genome1 from dad to make recombinant
-					if(dad.genome1.tag == 1 & dad.genome2.tag == 0){p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome1, NULL, NULL);}
+					if(dad.genome1.tag == 1 & dad.genome2.tag == 0){
+						child = p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome1, NULL, NULL);
+						// apply fitness penalty to selfed offspring
+						if(dad == individual) child.fitnessScaling = 1 - constantDelta;
+					}
 					//if only genome2 from dad is compatible, take random genome from mom and genome2 from dad to make recombinant
-					if(dad.genome1.tag == 0 & dad.genome2.tag == 1){p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome2, NULL, NULL);}
+					if(dad.genome1.tag == 0 & dad.genome2.tag == 1){
+						child = p1.addRecombinant(individual.genome1, individual.genome2, breaks, dad.genome2, NULL, NULL);
+						// apply fitness penalty to selfed offspring
+						if(dad == individual) child.fitnessScaling = 1 - constantDelta;
+					}
 					// if dad is incompatible it shouldn't be here, but kill the kid just in case
 					if(dad.genome1.tag == 0 & dad.genome2.tag == 0){
 						dead_kid = p1.addEmpty();
