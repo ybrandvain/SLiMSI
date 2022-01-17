@@ -438,8 +438,8 @@ early() {
 	// Determine the output name
 	
 	// Name differently depending on whether sheltered load was turned on
-	if(sheltered) prefix = 'sheltered';
-	else prefix = 'no_sheltered';
+	if(sheltered) prefix = 'sheltered_burnin_';
+	else prefix = 'no_sheltered_burnin_';
 	
 	out_name = prefix + K + "K_" + N + "N_" + FB + "FB_" + num_hap + "num_hap_" + cross_grains + "cross_grains_" + self_grains + "self_grains_" + mu + "mu_" + mult + "mult.txt";
 	sim.outputFull(out_name, append = F);
