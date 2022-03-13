@@ -24,6 +24,9 @@ initialize() {
 	// Define a constant, unpurgeable fitness penalty for all selfed offspring
 	defineConstant('constantDelta', 0.0);
 	
+	// If only_sc_selfs is true, SI individuals replace self_grains with more cross pollen
+	defineConstant('only_sc_selfs', F);	
+	
 	// g1 genomic element type: uses m1 for all mutations (non S-locus)
 	initializeGenomicElementType("g1", c(m6), c(mult));
 	// g2 genomic element type: uses m1, m2, and m3 mutations (S-RNase)
@@ -180,9 +183,67 @@ reproduction(){
 	
 	// each individual reproduces itself once -- determine how many offspring focal individual will have
 	nOff=rpois(1, 5);
+
+	// Before deciding on self- and cross-pollen, determine if the individual is SC
+	// Try fertilizing the individual with BOTH of its OWN UNRECOMBINED GENOMES
+	// If BOTH are rejected, it is SI
+	// Individuals that are SEMI-COMPATIBLE with themselves are classified as SC
+	sc = T; // Assume that it's SC until proven otherwise
+	for(self_pollen in individual.genomes){
+		// get pollen mutations
+		pollen_muts1=self_pollen.mutationsOfType(m4).position;
+		pollen_muts2=self_pollen.mutationsOfType(m4).position;
+		// get pollen specifities
+		// assign pollen specificities
+		pmut1_spec = c();
+		for(pos in pollen_muts1){
+			pmut1_spec = c(pmut1_spec, fbox_dict[which(pos >= fbox_dict[,1] & pos <= fbox_dict[,2]),0]);
+		}
+		pmut2_spec = c();
+		for(pos in pollen_muts2){
+			pmut2_spec = c(pmut2_spec, fbox_dict[which(pos >= fbox_dict[,1] & pos <= fbox_dict[,2]),0]);
+		}
+		// check compatibility
+		// for compatibility the F-box pollen specs (for each genome), must match/contain BOTH s-rnase specs of the focal individual
+		if(style_specs[0] == -1) // If the first RNase is broken, both pollen haplotypes are automatically compatible
+		{
+			pollen1_comp1 = T;
+			pollen2_comp1 = T;
+		}
+		else
+		{
+			pollen1_comp1=any(style_specs[0] == pmut1_spec);
+			pollen2_comp1=any(style_specs[0] == pmut2_spec);
+		}
+		if(style_specs[1] == -1) // If the second RNase is broken, both pollen haplotypes are automatically compatible
+		{
+			pollen1_comp2 = T;
+			pollen2_comp2 = T;
+		}
+		else
+		{
+			pollen1_comp2=any(style_specs[1] == pmut1_spec);
+			pollen2_comp2=any(style_specs[1] == pmut2_spec);
+		}
+		pollen1_comp = pollen1_comp1 & pollen1_comp2;
+		pollen2_comp = pollen2_comp1 & pollen2_comp2;
+		if(pollen1_comp == F & pollen2_comp == F){
+			sc = F;
+		}
+	}
 	// sample plants from subppop to be pollen parents -- 
 	cross_pollen_parents=p1.sampleIndividuals(cross_grains, replace = T); // allowing replacement allows full sibs
-	pollen_parents = c(cross_pollen_parents, rep(individual, self_grains)); // add self pollen
+	if(only_sc_selfs){
+		if(sc){
+			pollen_parents = c(cross_pollen_parents, rep(individual, self_grains)); // add self pollen
+		}
+		else{
+			pollen_parents = c(cross_pollen_parents, p1.sampleIndividuals(self_grains, replace = T)); // just add more cross pollen
+		}
+	}
+	else{
+		pollen_parents = c(cross_pollen_parents, rep(individual, self_grains)); // add self pollen
+	}
 	//	pollen_parents = sample(pollen_parents, replace = F); // shuffle self and cross pollen just in case
 	// get pollen specificities for each parent in pollen subsample
 	for(dad in pollen_parents){
